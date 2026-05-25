@@ -1,0 +1,98 @@
+---
+version: "3.8"
+
+#
+# SSL/TLS reverse proxy configuration using Traefik
+# Provides automatic Let's Encrypt certificates for all services
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d
+#
+# Required environment variables in .env:
+#   DOMAIN=zammad.yourdomain.com
+#   ACME_EMAIL=admin@yourdomain.com
+#
+# Optional:
+#   GRAFANA_DOMAIN=grafana.yourdomain.com (defaults to grafana.${DOMAIN})
+#   PROMETHEUS_DOMAIN=prometheus.yourdomain.com (defaults to prometheus.${DOMAIN})
+#   TRAEFIK_DASHBOARD_DOMAIN=traefik.yourdomain.com (defaults to traefik.${DOMAIN})
+#   TRAEFIK_DASHBOARD_USER=admin (for basic auth)
+#   TRAEFIK_DASHBOARD_PASSWORD_HASH=<htpasswd hash>
+#
+
+services:
+  # ============================================================================
+  # Traefik Reverse Proxy
+  # ============================================================================
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: ${RESTART:-always}
+    command:
+      # API and Dashboard
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+      # Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik-public"
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # HTTP to HTTPS redirect
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Let's Encrypt ACME
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      # Logging
+      - "--log.level=INFO"
+      - "--accesslog=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+    networks:
+      - traefik-public
+      - default
+    labels:
+      # Dashboard
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`${TRAEFIK_DASHBOARD_DOMAIN:-traefik.${DOMAIN}}`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      # Basic auth for dashboard (optional)
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_USER:-admin}:${TRAEFIK_DASHBOARD_PASSWORD_HASH:-$$apr1$$xyz$$placeholder}"
+
+  # ============================================================================
+  # Zammad Nginx - Override to add Traefik labels
+  # ============================================================================
+  zammad-nginx:
+    networks:
+      - traefik-public
+      - default
+    ports: []  # Remove direct port exposure
+    labels:
+      - "traefik.enable=true"
+      # Main Zammad router
+      - "traefik.http.routers.zammad.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.zammad.entrypoints=websecure"
+      - "traefik.http.routers.zammad.tls.certresolver=letsencrypt"
+      - "traefik.http.services.zammad.loadbalancer.server.port=${NGINX_PORT:-8080}"
+      # WebSocket support
+      - "traefik.http.routers.zammad.middlewares=zammad-headers"
+      - "traefik.http.middlewares.zammad-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+
+networks:
+  traefik-public:
+    name: traefik-public
+    driver: bridge
+
+volumes:
+  traefik-letsencrypt:
+    driver: local

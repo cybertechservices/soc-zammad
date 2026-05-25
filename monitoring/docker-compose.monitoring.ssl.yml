@@ -1,0 +1,67 @@
+---
+version: "3.8"
+
+#
+# Monitoring stack with SSL via Traefik
+# Requires docker-compose.ssl.yml to be running (for Traefik)
+#
+# Usage:
+#   docker compose -f monitoring/docker-compose.monitoring.yml -f monitoring/docker-compose.monitoring.ssl.yml up -d
+#
+# Required environment variables:
+#   DOMAIN=yourdomain.com
+#   GRAFANA_DOMAIN=grafana.yourdomain.com (optional, defaults to grafana.${DOMAIN})
+#   PROMETHEUS_DOMAIN=prometheus.yourdomain.com (optional, defaults to prometheus.${DOMAIN})
+#
+
+services:
+  # ============================================================================
+  # Prometheus - Override for Traefik
+  # ============================================================================
+  prometheus:
+    ports: []  # Remove direct port exposure
+    networks:
+      - traefik-public
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`${PROMETHEUS_DOMAIN:-prometheus.${DOMAIN}}`)"
+      - "traefik.http.routers.prometheus.entrypoints=websecure"
+      - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+      # Basic auth middleware (reuse from traefik)
+      - "traefik.http.routers.prometheus.middlewares=traefik-auth@docker"
+
+  # ============================================================================
+  # Grafana - Override for Traefik
+  # ============================================================================
+  grafana:
+    ports: []  # Remove direct port exposure
+    networks:
+      - traefik-public
+      - default
+    environment:
+      - GF_SERVER_ROOT_URL=https://${GRAFANA_DOMAIN:-grafana.${DOMAIN}}
+      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN:-grafana.${DOMAIN}}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`${GRAFANA_DOMAIN:-grafana.${DOMAIN}}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+  # ============================================================================
+  # Node Exporter - Internal only (no external access)
+  # ============================================================================
+  node_exporter:
+    ports: []  # Remove direct port exposure
+
+  # ============================================================================
+  # cAdvisor - Internal only (no external access)
+  # ============================================================================
+  cadvisor:
+    ports: []  # Remove direct port exposure
+
+networks:
+  traefik-public:
+    external: true

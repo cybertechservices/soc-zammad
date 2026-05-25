@@ -4,25 +4,139 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      deploy_monitoring:
+        description: 'Deploy monitoring stack'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      ssl_enabled:
+        description: 'Enable SSL/HTTPS via Traefik'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  DEPLOY_DIR: /opt/zammad
+  DOCKER_ROOT_DIR: /data/docker
+  SSL_ENABLED: ${{ github.event.inputs.ssl_enabled || 'true' }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.7.0
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.PRIVATE_KEY }}
 
-      - name: Deploy to VM
+      - name: Add host to known_hosts
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} '
-            cd /root/zammad-auto-deploy &&
-            git pull origin main &&
-            docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml pull &&
-            docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml up -d
-          '
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Zammad to Azure VM
+        run: |
+          ssh ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'ENDSSH'
+            set -e
+
+            echo "=== Pulling latest code ==="
+            cd ${{ env.DEPLOY_DIR }}
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "=== Creating .env if not exists ==="
+            if [ ! -f .env ]; then
+              cp .env.dist .env
+              echo "Created .env from .env.dist - please configure DOMAIN and ACME_EMAIL"
+            fi
+
+            echo "=== Pulling Docker images ==="
+            if [ "${{ env.SSL_ENABLED }}" = "true" ]; then
+              echo "SSL mode enabled - using Traefik reverse proxy"
+              docker compose -f docker-compose.yml -f docker-compose.ssl.yml pull
+            else
+              docker compose pull
+            fi
+
+            echo "=== Starting Zammad stack ==="
+            if [ "${{ env.SSL_ENABLED }}" = "true" ]; then
+              docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d
+            else
+              docker compose up -d
+            fi
+
+            echo "=== Cleaning up old images ==="
+            docker image prune -f
+          ENDSSH
+
+      - name: Deploy Monitoring Stack
+        if: ${{ github.event.inputs.deploy_monitoring != 'false' }}
+        run: |
+          ssh ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'ENDSSH'
+            set -e
+            cd ${{ env.DEPLOY_DIR }}
+
+            echo "=== Starting monitoring stack ==="
+            if [ "${{ env.SSL_ENABLED }}" = "true" ]; then
+              echo "SSL mode enabled - monitoring via Traefik"
+              DOCKER_ROOT_DIR=${{ env.DOCKER_ROOT_DIR }} docker compose \
+                -f monitoring/docker-compose.monitoring.yml \
+                -f monitoring/docker-compose.monitoring.ssl.yml pull
+              DOCKER_ROOT_DIR=${{ env.DOCKER_ROOT_DIR }} docker compose \
+                -f monitoring/docker-compose.monitoring.yml \
+                -f monitoring/docker-compose.monitoring.ssl.yml up -d
+            else
+              DOCKER_ROOT_DIR=${{ env.DOCKER_ROOT_DIR }} docker compose -f monitoring/docker-compose.monitoring.yml pull
+              DOCKER_ROOT_DIR=${{ env.DOCKER_ROOT_DIR }} docker compose -f monitoring/docker-compose.monitoring.yml up -d
+            fi
+          ENDSSH
+
+      - name: Health Check
+        run: |
+          echo "Waiting for services to start..."
+          sleep 45
+
+          if [ "${{ env.SSL_ENABLED }}" = "true" ]; then
+            echo "=== Checking Zammad (HTTPS) ==="
+            curl -sfk --retry 5 --retry-delay 10 https://${{ secrets.DOMAIN }} > /dev/null && echo "Zammad: OK" || echo "Zammad: Not ready yet (may need DNS propagation)"
+
+            echo "=== Checking Grafana (HTTPS) ==="
+            curl -sfk --retry 3 --retry-delay 5 https://${{ secrets.GRAFANA_DOMAIN }}/api/health > /dev/null && echo "Grafana: OK" || echo "Grafana: Not ready yet"
+          else
+            echo "=== Checking Zammad ==="
+            curl -sf --retry 5 --retry-delay 10 http://${{ secrets.HOST }}:8080 > /dev/null && echo "Zammad: OK" || echo "Zammad: Not ready yet"
+
+            echo "=== Checking Grafana ==="
+            curl -sf --retry 3 --retry-delay 5 http://${{ secrets.HOST }}:3000/api/health > /dev/null && echo "Grafana: OK" || echo "Grafana: Not ready yet"
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "============================================"
+          echo "Deployment Complete!"
+          echo "============================================"
+          echo ""
+          if [ "${{ env.SSL_ENABLED }}" = "true" ]; then
+            echo "Zammad:     https://${{ secrets.DOMAIN }}"
+            echo "Grafana:    https://${{ secrets.GRAFANA_DOMAIN }}"
+            echo "Prometheus: https://${{ secrets.PROMETHEUS_DOMAIN }}"
+            echo "Traefik:    https://${{ secrets.TRAEFIK_DOMAIN }}"
+          else
+            echo "Zammad:     http://${{ secrets.HOST }}:8080"
+            echo "Grafana:    http://${{ secrets.HOST }}:3000"
+            echo "Prometheus: http://${{ secrets.HOST }}:9090"
+          fi
+          echo ""

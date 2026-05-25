@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "resourceGroup": "rg-soc-itsm"
+  },
+  "parameters": {
+    "baseName": {
+      "value": "soc-itsm"
+    },
+    "vmSize": {
+      "value": "Standard_B2ms"
+    },
+    "adminUsername": {
+      "value": "zammadadmin"
+    },
+    "sshPublicKey": {
+      "value": "REPLACE_WITH_YOUR_SSH_PUBLIC_KEY"
+    },
+    "dataDiskSizeGB": {
+      "value": 128
+    },
+    "enableAutoShutdown": {
+      "value": false
+    },
+    "autoShutdownTime": {
+      "value": "23:00"
+    },
+    "allowedSshCidr": {
+      "value": ""
+    },
+    "enableBackup": {
+      "value": false
+    },
+    "tags": {
+      "value": {
+        "project": "zammad",
+        "environment": "production",
+        "managedBy": "bicep"
+      }
+    }
+  }
+}
