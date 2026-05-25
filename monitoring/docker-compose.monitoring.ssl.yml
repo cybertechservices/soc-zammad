@@ -1,6 +1,4 @@
 ---
-version: "3.8"
-
 #
 # Monitoring stack with SSL via Traefik
 # Requires docker-compose.ssl.yml to be running (for Traefik)

@@ -1,6 +1,4 @@
 ---
-version: "3.8"
-
 #
 # SSL/TLS reverse proxy configuration using Traefik
 # Provides automatic Let's Encrypt certificates for all services
