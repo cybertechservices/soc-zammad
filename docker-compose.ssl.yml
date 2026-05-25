@@ -26,6 +26,8 @@ services:
     image: traefik:v3.0
     container_name: traefik
     restart: ${RESTART:-always}
+    environment:
+      - DOCKER_API_VERSION=1.45
     command:
       # API and Dashboard
       - "--api.dashboard=true"
