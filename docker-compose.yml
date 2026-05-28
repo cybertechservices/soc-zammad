@@ -1,6 +1,4 @@
 ---
-version: "3.8"
-
 x-shared:
   zammad-service: &zammad-service
     environment: &zammad-environment
@@ -34,9 +32,9 @@ x-shared:
       NGINX_CLIENT_MAX_BODY_SIZE:
       NGINX_SERVER_NAME:
       NGINX_SERVER_SCHEME:
-      RAILS_TRUSTED_PROXIES:
-      ZAMMAD_HTTP_TYPE:
-      ZAMMAD_FQDN:
+      RAILS_TRUSTED_PROXIES: ${RAILS_TRUSTED_PROXIES:-}
+      ZAMMAD_HTTP_TYPE: ${ZAMMAD_HTTP_TYPE:-}
+      ZAMMAD_FQDN: ${ZAMMAD_FQDN:-}
       ZAMMAD_WEB_CONCURRENCY:
       ZAMMAD_PROCESS_SESSIONS_JOBS_WORKERS:
       ZAMMAD_PROCESS_SCHEDULED_JOBS_WORKERS:

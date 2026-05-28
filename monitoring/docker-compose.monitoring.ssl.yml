@@ -4,12 +4,16 @@
 # Requires docker-compose.ssl.yml to be running (for Traefik)
 #
 # Usage:
-#   docker compose -f monitoring/docker-compose.monitoring.yml -f monitoring/docker-compose.monitoring.ssl.yml up -d
+#   docker compose --env-file .env -f monitoring/docker-compose.monitoring.yml -f monitoring/docker-compose.monitoring.ssl.yml up -d
 #
 # Required environment variables:
 #   DOMAIN=yourdomain.com
-#   GRAFANA_DOMAIN=grafana.yourdomain.com (optional, defaults to grafana.${DOMAIN})
-#   PROMETHEUS_DOMAIN=prometheus.yourdomain.com (optional, defaults to prometheus.${DOMAIN})
+#   GRAFANA_DOMAIN=grafana.yourdomain.com
+#   PROMETHEUS_DOMAIN=prometheus.yourdomain.com
+#
+# Security environment variables:
+#   GRAFANA_ADMIN_PASSWORD=your-secure-password
+#   BASIC_AUTH_USERS=admin:$$apr1$$hashedpassword (for Prometheus)
 #
 
 services:
@@ -23,12 +27,13 @@ services:
       - default
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.prometheus.rule=Host(`${PROMETHEUS_DOMAIN:-prometheus.${DOMAIN}}`)"
+      - "traefik.http.routers.prometheus.rule=Host(`${PROMETHEUS_DOMAIN}`)"
       - "traefik.http.routers.prometheus.entrypoints=websecure"
       - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
-      # Basic auth middleware (reuse from traefik)
-      - "traefik.http.routers.prometheus.middlewares=traefik-auth@docker"
+      # Basic auth protection for Prometheus
+      - "traefik.http.routers.prometheus.middlewares=prometheus-auth"
+      - "traefik.http.middlewares.prometheus-auth.basicauth.users=${BASIC_AUTH_USERS}"
 
   # ============================================================================
   # Grafana - Override for Traefik
@@ -39,11 +44,23 @@ services:
       - traefik-public
       - default
     environment:
-      - GF_SERVER_ROOT_URL=https://${GRAFANA_DOMAIN:-grafana.${DOMAIN}}
-      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN:-grafana.${DOMAIN}}
+      # Server settings
+      - GF_SERVER_ROOT_URL=https://${GRAFANA_DOMAIN}
+      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN}
+      # Security settings
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_SECRET_KEY=${GRAFANA_SECRET_KEY:-SW2YcwTIb9zpOOhoPsMm}
+      # Disable anonymous access and signups
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_ALLOW_ORG_CREATE=false
+      # Cookie security
+      - GF_SECURITY_COOKIE_SECURE=true
+      - GF_SECURITY_COOKIE_SAMESITE=strict
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`${GRAFANA_DOMAIN:-grafana.${DOMAIN}}`)"
+      - "traefik.http.routers.grafana.rule=Host(`${GRAFANA_DOMAIN}`)"
       - "traefik.http.routers.grafana.entrypoints=websecure"
       - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
