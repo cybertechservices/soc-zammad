@@ -21,13 +21,14 @@ services:
     restart: ${RESTART:-always}
     environment:
       # Zammad API connection
-      - ZAMMAD_URL=https://${DOMAIN}/api/v1
+      - ZAMMAD_URL=http://zammad-nginx:8080/api/v1
       - ZAMMAD_HTTP_TOKEN=${ZAMMAD_API_TOKEN}
       - ZAMMAD_INSECURE=${ZAMMAD_INSECURE:-false}
       # HTTP transport mode (required for reverse proxy)
       - MCP_TRANSPORT=http
       - MCP_HOST=0.0.0.0
       - MCP_PORT=8000
+      
       # Logging
       - LOG_LEVEL=${MCP_LOG_LEVEL:-INFO}
     networks:
