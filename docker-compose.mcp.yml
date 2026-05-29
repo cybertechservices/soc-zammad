@@ -1,0 +1,45 @@
+---
+#
+# Zammad MCP Server - AI Integration for Zammad
+# https://github.com/basher83/Zammad-MCP
+#
+# Usage:
+#   docker compose -f docker-compose.mcp.yml up -d
+#
+# With SSL (requires docker-compose.ssl.yml running):
+#   docker compose --env-file .env -f docker-compose.mcp.yml -f docker-compose.mcp.ssl.yml up -d
+#
+# Required environment variables in .env:
+#   ZAMMAD_MCP_DOMAIN=mcp.yourdomain.com
+#   ZAMMAD_API_TOKEN=your-zammad-api-token
+#
+
+services:
+  zammad-mcp:
+    image: ghcr.io/basher83/zammad-mcp:latest
+    container_name: zammad-mcp
+    restart: ${RESTART:-always}
+    environment:
+      # Zammad API connection
+      - ZAMMAD_URL=https://${DOMAIN}/api/v1
+      - ZAMMAD_HTTP_TOKEN=${ZAMMAD_API_TOKEN}
+      - ZAMMAD_INSECURE=${ZAMMAD_INSECURE:-false}
+      # HTTP transport mode (required for reverse proxy)
+      - MCP_TRANSPORT=http
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8000
+      # Logging
+      - LOG_LEVEL=${MCP_LOG_LEVEL:-INFO}
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/health", "||", "exit", "0"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  default:
+    name: zammad_default
+    external: true

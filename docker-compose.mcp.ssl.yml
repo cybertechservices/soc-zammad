@@ -1,0 +1,29 @@
+---
+#
+# Zammad MCP Server - SSL/Traefik overlay
+#
+# Usage:
+#   docker compose --env-file .env -f docker-compose.mcp.yml -f docker-compose.mcp.ssl.yml up -d
+#
+# Required environment variables:
+#   ZAMMAD_MCP_DOMAIN=mcp.yourdomain.com (or mcp.IP.nip.io)
+#
+
+services:
+  zammad-mcp:
+    networks:
+      - default
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zammad-mcp.rule=Host(`${ZAMMAD_MCP_DOMAIN}`)"
+      - "traefik.http.routers.zammad-mcp.entrypoints=websecure"
+      - "traefik.http.routers.zammad-mcp.tls.certresolver=letsencrypt"
+      - "traefik.http.services.zammad-mcp.loadbalancer.server.port=8000"
+      # Optional: Add basic auth protection
+      # - "traefik.http.routers.zammad-mcp.middlewares=mcp-auth"
+      # - "traefik.http.middlewares.mcp-auth.basicauth.users=${BASIC_AUTH_USERS}"
+
+networks:
+  traefik-public:
+    external: true
