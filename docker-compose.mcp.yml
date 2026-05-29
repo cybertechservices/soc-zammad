@@ -41,5 +41,3 @@ services:
 
 networks:
   default:
-    name: zammad_default
-    external: true
