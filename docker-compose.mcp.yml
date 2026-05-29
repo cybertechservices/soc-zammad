@@ -32,12 +32,5 @@ services:
       - LOG_LEVEL=${MCP_LOG_LEVEL:-INFO}
     networks:
       - default
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/health", "||", "exit", "0"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
 networks:
   default:
